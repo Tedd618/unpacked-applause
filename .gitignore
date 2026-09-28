@@ -1,0 +1,18 @@
+# Environments
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.ipynb_checkpoints/
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+
+# Large / licensed inputs — never committed (raw audio, captions, price caches)
+data/raw/
+data/interim/
+models/*.pth
+models/*.csv
+
+# Build outputs
+reports/build/
