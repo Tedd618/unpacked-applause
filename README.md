@@ -145,6 +145,10 @@ official-videos-only check mitigate this). Caption tags are an incomplete ground
 start times are uncertain, and occasionally other news (e.g. a Tesla delivery report) falls
 inside the window. The sample is nine of the most liquid stocks in the world.
 
+## Acknowledgements
+
+Developed with AI coding assistance (Claude Code).
+
 ## Data and licensing
 
 Code is MIT-licensed. Keynote audio is downloaded only to compute derived measures and is
