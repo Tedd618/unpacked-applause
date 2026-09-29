@@ -15,11 +15,15 @@ import numpy as np
 import pandas as pd
 
 from .config import (
-    COMPANIES, ESTIMATION_WINDOW, EVENT_WINDOWS, MIN_ESTIMATION_OBS, PATH_WINDOW,
+    COMPANIES,
+    ESTIMATION_WINDOW,
+    EVENT_WINDOWS,
+    MIN_ESTIMATION_OBS,
+    PATH_WINDOW,
 )
 from .market import stock_panel
 
-MODELS = ("market", "market_adj", "mean", "ff3")
+MODELS = ("market", "market_ndx", "market_adj", "mean", "ff3")
 
 
 def locate_t0(close_utc: pd.Series, start_utc: pd.Timestamp) -> int | None:
@@ -49,9 +53,10 @@ def abnormal_returns(panel: pd.DataFrame, pos: int, model: str = "market",
     ev_df = panel.iloc[idx[ok]]
 
     r_est, r_ev = est_df["ret"].to_numpy(), ev_df["ret"].to_numpy()
-    if model == "market":
-        X_est = np.column_stack([np.ones(len(est_df)), est_df["mkt"].to_numpy()])
-        X_ev = np.column_stack([np.ones(len(ev_df)), ev_df["mkt"].to_numpy()])
+    if model in ("market", "market_ndx"):
+        col = "mkt" if model == "market" else "mkt_ndx"
+        X_est = np.column_stack([np.ones(len(est_df)), est_df[col].to_numpy()])
+        X_ev = np.column_stack([np.ones(len(ev_df)), ev_df[col].to_numpy()])
         y_est, y_ev = r_est, r_ev
     elif model == "ff3":
         if "mkt_rf" not in panel:

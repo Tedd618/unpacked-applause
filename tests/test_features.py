@@ -43,3 +43,16 @@ def test_event_features_counts_applause():
     assert f["applause_max_s"] == 12
     assert f["applause_rel_db"] == 10.0
     assert 0 < f["applause_share"] < 0.03
+
+
+def test_keynote_span_cuts_closing_music_performance():
+    tl = make_timeline(n=1500, speech_from=100, speech_to=1450)
+    tl.loc[1200:1400, ["music", "speech"]] = [0.9, 0.2]  # 200 s song near the end
+    s0, s1 = keynote_span(tl)
+    assert 1195 <= s1 <= 1215  # smoothing shifts the cut by a few seconds
+
+
+def test_keynote_span_keeps_short_product_film():
+    tl = make_timeline(n=1500, speech_from=100, speech_to=1450)
+    tl.loc[1300:1360, ["music", "speech"]] = [0.9, 0.2]  # 60 s sizzle reel: not a performance
+    assert keynote_span(tl)[1] >= 1440

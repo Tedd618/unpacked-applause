@@ -11,7 +11,11 @@ import torch
 
 from .audio import audio_path, decode, rms_db_per_second
 from .config import (
-    AUDIOSET_LABELS, PANNS_CHECKPOINT, SAMPLE_RATE, TIMELINE_CLASSES, TIMELINES_DIR,
+    AUDIOSET_LABELS,
+    PANNS_CHECKPOINT,
+    SAMPLE_RATE,
+    TIMELINE_CLASSES,
+    TIMELINES_DIR,
 )
 from .panns import SEGMENT_SAMPLES, load_model
 

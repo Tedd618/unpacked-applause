@@ -29,11 +29,23 @@ class EpisodeParams:
 
 @dataclass(frozen=True)
 class SpanParams:
-    """The keynote span runs from the first to the last minute that is mostly speech."""
+    """The keynote span runs from the first to the last minute that is mostly speech.
+
+    A closing music performance (Apple booked Foo Fighters, U2, Sia, ...) is cut off: if a run
+    of at least ``closing_music_s`` music-dominated seconds starts in the last
+    ``closing_zone`` of the span, the span ends where that run starts.
+    """
 
     speech_thr: float = 0.5
     window_s: int = 60
     min_speech_share: float = 0.3
+    music_thr: float = 0.5
+    closing_music_s: int = 120
+    closing_zone: float = 0.25
+
+
+DEFAULT_EPISODE = EpisodeParams()
+DEFAULT_SPAN = SpanParams()
 
 
 def clap_score(tl: pd.DataFrame) -> np.ndarray:
@@ -51,7 +63,7 @@ def runs(mask: np.ndarray) -> list[tuple[int, int]]:
     return list(zip(edges[::2].tolist(), edges[1::2].tolist(), strict=True))
 
 
-def episodes(score: np.ndarray, p: EpisodeParams = EpisodeParams()) -> list[tuple[int, int]]:
+def episodes(score: np.ndarray, p: EpisodeParams = DEFAULT_EPISODE) -> list[tuple[int, int]]:
     merged: list[tuple[int, int]] = []
     for a, b in runs(score >= p.off):  # a brief dip below `off` does not end an ovation
         if merged and a - merged[-1][1] <= p.merge_gap:
@@ -68,18 +80,25 @@ def episode_mask(n: int, eps: list[tuple[int, int]]) -> np.ndarray:
     return mask
 
 
-def keynote_span(tl: pd.DataFrame, p: SpanParams = SpanParams()) -> tuple[int, int]:
+def keynote_span(tl: pd.DataFrame, p: SpanParams = DEFAULT_SPAN) -> tuple[int, int]:
     """Trim countdown pre-rolls and post-show music: keep the speech-dominated stretch."""
     speaking = (tl["speech"].to_numpy() >= p.speech_thr).astype(float)
     share = pd.Series(speaking).rolling(p.window_s, center=True, min_periods=1).mean().to_numpy()
     active = np.flatnonzero(share >= p.min_speech_share)
     if len(active) == 0:
         return 0, len(tl)
-    return int(active[0]), int(active[-1]) + 1
+    s0, s1 = int(active[0]), int(active[-1]) + 1
+    music = (tl["music"].to_numpy() >= p.music_thr).astype(float)
+    dominated = pd.Series(music).rolling(30, center=True, min_periods=1).mean().to_numpy() >= 0.8
+    zone_start = s1 - int(p.closing_zone * (s1 - s0))
+    for a, b in runs(dominated[s0:]):
+        if s0 + a >= zone_start and b - a >= p.closing_music_s:
+            return s0, s0 + a
+    return s0, s1
 
 
-def event_features(tl: pd.DataFrame, ep: EpisodeParams = EpisodeParams(),
-                   sp: SpanParams = SpanParams()) -> dict[str, float]:
+def event_features(tl: pd.DataFrame, ep: EpisodeParams = DEFAULT_EPISODE,
+                   sp: SpanParams = DEFAULT_SPAN) -> dict[str, float]:
     s0, s1 = keynote_span(tl, sp)
     seg = tl.iloc[s0:s1].reset_index(drop=True)
     n = len(seg)

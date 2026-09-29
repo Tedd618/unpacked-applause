@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -10,8 +11,11 @@ import yt_dlp
 
 from .config import AUDIO_DIR, CAPTIONS_DIR, SAMPLE_RATE
 
-# Low-bitrate Opus first (~20 MB per hour, full 48 kHz bandwidth); AAC as fallback.
-AUDIO_FORMAT = "249/250/251/140/139/bestaudio"
+# Low-bitrate Opus first (~20 MB per hour, full 48 kHz bandwidth); AAC as fallback. Videos
+# with several audio tracks (YouTube auto-dubbing) only expose suffixed ids such as "251-10",
+# so they fall through to the best track that is neither machine-dubbed nor a "DRC"
+# (YouTube stable-volume) variant, whose compression would flatten applause loudness.
+AUDIO_FORMAT = "249/250/251/140/139/bestaudio[format_note!*=?dubbed][format_note!*=?DRC]"
 CAPTION_LANGS = ["en", "en-US", "en-GB", "en-orig", "en-en"]
 
 
@@ -43,11 +47,20 @@ def download_audio(event_id: str, youtube_id: str) -> Path:
         "sleep_interval_requests": 1,
     }
     with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([youtube_url(youtube_id)])
+        info = ydl.extract_info(youtube_url(youtube_id), download=True)
     path = audio_path(event_id)
     if path is None:
         raise FileNotFoundError(f"download produced no audio file for {event_id}")
+    write_track_info(event_id, info)
     return path
+
+
+def write_track_info(event_id: str, info: dict) -> None:
+    """Record which audio track was downloaded (guards against dubbed tracks)."""
+    fmt = (info.get("requested_formats") or [info])[0]
+    keep = ["format_id", "language", "format_note", "acodec", "abr", "asr"]
+    track = {k: fmt.get(k) for k in keep} | {"youtube_id": info.get("id")}
+    (AUDIO_DIR / f"{event_id}.json").write_text(json.dumps(track, indent=1))
 
 
 def download_captions(event_id: str, youtube_id: str) -> list[Path]:
@@ -89,7 +102,7 @@ def decode(path: Path, sample_rate: int = SAMPLE_RATE) -> np.ndarray:
         "ffmpeg", "-nostdin", "-v", "error", "-i", str(path),
         "-f", "s16le", "-acodec", "pcm_s16le", "-ac", "1", "-ar", str(sample_rate), "-",
     ]
-    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    proc = subprocess.run(cmd, capture_output=True, check=False)
     if proc.returncode != 0:
         raise RuntimeError(f"ffmpeg failed on {path}: {proc.stderr.decode()[-500:]}")
     return np.frombuffer(proc.stdout, dtype="<i2")

@@ -104,6 +104,9 @@ def stock_panel(company: Company, benchmark: str | None = None) -> pd.DataFrame:
     # prices would masquerade as zero returns.
     df.loc[stock["volume"] == 0, "ret"] = np.nan
     df["mkt"] = mkt["close"].pct_change().reindex(df.index)
+    # Robustness benchmark: Nasdaq-100 for US listings (KOSPI stays the market for Samsung).
+    ndx = load_prices("^NDX") if company.currency == "USD" else mkt
+    df["mkt_ndx"] = ndx["close"].pct_change().reindex(df.index)
     df["logvol"] = np.log1p(stock["volume"].astype(float))
     df["close_utc"] = session_closes(company.exchange, df.index)
     ff = load_ff_factors()

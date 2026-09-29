@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.5", "jupyter", "nbconvert", "nbclient", "ipykernel"]
+dev = ["pytest>=8", "ruff>=0.5", "jupyter", "nbconvert", "nbclient", "ipykernel", "pypdf", "pypdfium2"]
 
 [project.scripts]
 applause = "unpacked_applause.cli:main"

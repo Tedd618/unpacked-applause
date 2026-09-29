@@ -1,9 +1,13 @@
 import numpy as np
+import pandas as pd
 
 from unpacked_applause.stats import (
-    benjamini_hochberg, caar_tests, design, permutation_pvalue, wild_cluster_bootstrap,
+    benjamini_hochberg,
+    caar_tests,
+    design,
+    permutation_pvalue,
+    wild_cluster_bootstrap,
 )
-import pandas as pd
 
 
 def test_benjamini_hochberg_matches_hand_calculation():
