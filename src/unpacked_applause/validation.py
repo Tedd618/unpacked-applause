@@ -13,7 +13,7 @@ from .detect import load_timeline, timeline_path
 from .features import EpisodeParams, clap_score, episodes, keynote_span, runs
 
 TOLERANCE_S = 2
-ON_GRID = [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5]
+ON_GRID = [0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5]
 OFF_RATIO_GRID = [0.4, 0.6, 0.8]
 MIN_DUR_GRID = [1, 2, 3]
 

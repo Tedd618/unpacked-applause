@@ -1,0 +1,51 @@
+{
+  "n_keynotes": 345,
+  "n_with_video": 327,
+  "n_live_sample": 250,
+  "n_companies_live": 9,
+  "primary": {
+    "beta": 0.002087451855987115,
+    "se_hc3": 0.07632339805429567,
+    "ci_lo": -0.14750365950814684,
+    "ci_hi": 0.15167856322012105,
+    "p_hc3": 0.9781805052261702,
+    "t_cr1": 0.02484622901369447,
+    "p_wcb": 0.9791979197919792,
+    "n": 250,
+    "n_clusters": 9
+  },
+  "spearman": {
+    "rho": -0.026695723131570103,
+    "p_perm": 0.6701,
+    "n": 250
+  },
+  "terciles": {
+    "diff": -0.04783257663692843,
+    "ci_lo": -0.43059129549563074,
+    "ci_hi": 0.34231209914653815,
+    "p_welch": 0.8078551379753474
+  },
+  "placebo": {
+    "beta_real": 0.002087451855987115,
+    "p_placebo": 0.973,
+    "pool_sizes": {
+      "apple": 3204,
+      "samsung": 3365,
+      "google": 3643,
+      "nvidia": 3488,
+      "microsoft": 3390,
+      "tesla": 3019,
+      "amazon": 3916,
+      "meta": 2937,
+      "amd": 3626
+    }
+  },
+  "hype_loadings": {
+    "z_applause_share": 0.523,
+    "z_applause_per_min": 0.498,
+    "z_applause_max": 0.363,
+    "z_clap_mass": 0.501,
+    "z_cheer_share": 0.307
+  },
+  "hype_explained": 0.6955894347671119
+}

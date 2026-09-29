@@ -146,6 +146,10 @@ def robustness(live: pd.DataFrame) -> pd.DataFrame:
         ("Sample", "Without Samsung", {"sample": lambda d: d[d.company != "samsung"]}),
         ("Sample", "Product launches only", {"sample": lambda d: d[d.is_launch == 1]}),
         ("Sample", "Official-channel videos only", {"sample": lambda d: d[d.official == 1]}),
+        ("Exploratory", "Without earnings releases within +-1 session",
+         {"sample": lambda d: d[~d.earnings_near.astype(bool)]}),
+        ("Exploratory", "Without low-confidence start times",
+         {"sample": lambda d: d[d.start_time_confidence != "low"]}),
     ]
     rows = []
     for group, label, spec in specs:

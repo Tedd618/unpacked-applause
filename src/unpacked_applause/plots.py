@@ -36,7 +36,7 @@ def setup() -> None:
         "font.family": "Helvetica Neue",
         "font.size": 9.5,
         "axes.titlesize": 11,
-        "axes.titleweight": "semibold",
+        "axes.titleweight": "bold",
         "axes.titlelocation": "left",
         "axes.titlecolor": INK,
         "axes.labelcolor": INK_2,
@@ -114,31 +114,37 @@ def fig_coverage(panel: pd.DataFrame) -> None:
     save(fig, "coverage_by_year")
 
 
-def fig_timeline(event_id: str, caption_tags: pd.DataFrame | None, tl: pd.DataFrame,
-                 episodes: list[tuple[int, int]], span: tuple[int, int], title: str) -> None:
-    """Clap score over a keynote with detected ovations and human caption tags."""
+def fig_timeline(event_id: str, caption_tags: pd.DataFrame, tl: pd.DataFrame,
+                 episodes: list[tuple[int, int]], window: tuple[int, int], title: str) -> None:
+    """A 15-minute excerpt: clap score and detected ovations above, human caption tags below."""
     from .features import clap_score
 
-    score = pd.Series(clap_score(tl)).rolling(5, center=True, min_periods=1).mean()
-    minutes = tl["t"].to_numpy() / 60
-    fig, ax = plt.subplots(figsize=(7.2, 2.8))
-    for a, b in episodes:
-        ax.axvspan(a / 60, b / 60, color=BLUE_LIGHT, alpha=0.35, lw=0, zorder=1)
-    ax.plot(minutes, score, color=BLUE, lw=1.1, zorder=2)
-    if caption_tags is not None and len(caption_tags):
-        tags = caption_tags[caption_tags["is_applause"]]
-        ax.scatter(tags["start_s"] / 60, np.full(len(tags), -0.07), marker="|", s=40,
-                   color=INK_2, lw=1, zorder=3, clip_on=False)
-        ax.text(1.0, -0.07, " human caption tags", transform=ax.get_yaxis_transform(),
-                va="center", color=INK_2, fontsize=8.5)
-    ax.set_xlim(span[0] / 60, span[1] / 60)
-    ax.set_ylim(-0.12, 1.0)
+    a, b = window
+    t = np.arange(a, b) / 60
+    score = clap_score(tl)[a:b]
+    fig, (ax, strip) = plt.subplots(2, 1, figsize=(7.2, 3.1), sharex=True,
+                                    gridspec_kw={"height_ratios": [5, 1], "hspace": 0.12})
+    for s0, s1 in episodes:
+        if s1 > a and s0 < b:
+            ax.axvspan(max(s0, a) / 60, min(s1, b) / 60, color=BLUE_LIGHT, alpha=0.45, lw=0)
+    ax.plot(t, score, color=BLUE, lw=1.2)
+    ax.set_ylim(0, 1.0)
     ax.set_yticks([0, 0.5, 1.0])
-    ax.set_xlabel("Minutes into the video")
     ax.set_ylabel("Clap probability")
     ax.set_title(title, pad=18)
-    subtitle(ax, "PANNs clap score (5 s smoothing); shaded = detected ovations; ticks = [Applause] captions")
-    save(fig, f"timeline_{event_id}")
+    subtitle(ax, "Detector output (line) and detected ovations (shaded) vs. human caption tags")
+    tags = caption_tags[caption_tags["is_applause"]]
+    for row in tags.itertuples():
+        if row.end_s > a and row.start_s < b:
+            strip.axvspan(max(row.start_s, a) / 60, min(row.end_s, b) / 60, color=INK_2, lw=0)
+    strip.set_yticks([])
+    strip.grid(False)
+    strip.spines["left"].set_visible(False)
+    strip.text(-0.01, 0.5, "[Applause]\ncaptions", transform=strip.transAxes, ha="right",
+               va="center", fontsize=8, color=INK_2)
+    strip.set_xlim(a / 60, b / 60)
+    strip.set_xlabel("Minutes into the video")
+    save(fig, "timeline_example")
 
 
 def fig_detector(validation: dict, per_event: pd.DataFrame, panel: pd.DataFrame) -> None:
@@ -259,7 +265,7 @@ def fig_company_multiples(live: pd.DataFrame) -> None:
     fig.supxlabel("Share of keynote in applause (raw)", fontsize=9.5, color=INK_2)
     fig.supylabel("SCAR[0,+1]", fontsize=9.5, color=INK_2)
     fig.suptitle("The applause–return slope, company by company", x=0.02, ha="left",
-                 fontsize=11, fontweight="semibold", color=INK)
+                 fontsize=11, fontweight="bold", color=INK)
     fig.tight_layout()
     save(fig, "company_multiples")
 
@@ -271,8 +277,7 @@ def fig_terciles(table: pd.DataFrame, terc: dict) -> None:
     ax.errorbar(x, table["mean"], yerr=1.96 * table["se"], fmt="none", ecolor=INK_2,
                 elinewidth=1.2, capsize=0)
     for xi, m in zip(x, table["mean"], strict=True):
-        ax.text(xi, m + (0.02 if m >= 0 else -0.02), f"{m:+.2f}", ha="center",
-                va="bottom" if m >= 0 else "top", color=INK, fontsize=9)
+        ax.text(xi + 0.25, m, f"{m:+.2f}", ha="left", va="center", color=INK, fontsize=9)
     ax.axhline(0, color=BASELINE, lw=0.8)
     ax.set_xticks(x, ["Quietest third", "Middle", "Loudest third"])
     ax.set_ylabel("Mean SCAR[0,+1]")
@@ -283,7 +288,8 @@ def fig_terciles(table: pd.DataFrame, terc: dict) -> None:
 
 
 def fig_robustness(rob: pd.DataFrame, sec_meas: pd.DataFrame, sec_out: pd.DataFrame) -> None:
-    rows = [(r.spec, r.beta, r.ci_lo, r.ci_hi, r.group) for r in rob.itertuples()]
+    rows = [(r.spec + (" (exploratory)" if r.group == "Exploratory" else ""), r.beta, r.ci_lo,
+             r.ci_hi, r.group) for r in rob.itertuples()]
     rows += [(f"Measure: {r.measure}", r.beta, r.ci_lo, r.ci_hi, "Applause measure")
              for r in sec_meas.itertuples()]
     fig, ax = plt.subplots(figsize=(6.8, 0.26 * len(rows) + 1.0))
@@ -306,9 +312,11 @@ def fig_robustness(rob: pd.DataFrame, sec_meas: pd.DataFrame, sec_out: pd.DataFr
 def fig_placebo(betas: np.ndarray, real: float, p: float) -> None:
     fig, ax = plt.subplots(figsize=(5.4, 2.8))
     ax.hist(betas, bins=40, color=BLUE_LIGHT, edgecolor=SURFACE, linewidth=0.8)
-    ax.axvline(real, color=INK, lw=1.5)
-    ax.text(real, ax.get_ylim()[1] * 0.95, f"  actual keynote days: {real:+.3f}", color=INK,
-            fontsize=8.5, va="top", ha="left" if real < np.percentile(betas, 70) else "right")
+    top = ax.get_ylim()[1]
+    ax.set_ylim(0, top * 1.18)
+    ax.plot([real, real], [0, top * 1.06], color=INK, lw=1.5)
+    ax.text(real, top * 1.08, f"actual keynote days: {real:+.3f}", color=INK, fontsize=8.5,
+            va="bottom", ha="center")
     ax.set_xlabel("β from pseudo-event days")
     ax.set_ylabel("Draws")
     ax.set_title("Placebo: applause moved to random non-event days", pad=18)
@@ -361,16 +369,19 @@ def make_all() -> None:
     fig_placebo(placebo_betas, results["placebo"]["beta_real"], results["placebo"]["p_placebo"])
     fig_applause_by_company(live)
 
-    for event_id in ["apple_2017-09-12_iphone-x", "samsung_2013-03-14_galaxy-s4"]:
-        match = panel[panel.event_id.str.startswith(event_id[:18])]
-        if match.empty:
-            continue
-        eid = match.event_id.iloc[0]
-        try:
-            tl = load_timeline(eid)
-        except FileNotFoundError:
-            continue
-        path, kind = caption_track(eid)
-        tags = parse_json3(path) if kind == "manual" else None
-        eps = episodes(clap_score(tl), params)
-        fig_timeline(eid, tags, tl, eps, keynote_span(tl), match.event_name.iloc[0])
+    # Timeline example: the caption-labelled keynote whose AUC is closest to the median
+    # (a typical video, not the best one), zoomed to its 15 most-tagged minutes.
+    labelled = per_event[per_event["label_share"] > 0.02].copy()
+    labelled["gap"] = (labelled["auc"] - per_event["auc"].median()).abs()
+    eid = labelled.sort_values("gap").event_id.iloc[0]
+    tl = load_timeline(eid)
+    tags = parse_json3(caption_track(eid)[0])
+    s0, s1 = keynote_span(tl)
+    per_min = np.zeros(len(tl))
+    for r in tags[tags.is_applause].itertuples():
+        per_min[int(r.start_s) : int(r.end_s) + 1] = 1
+    width = 15 * 60
+    starts = range(s0, max(s0 + 1, s1 - width), 30)
+    best = max(starts, key=lambda a: per_min[a : a + width].sum())
+    name = panel.set_index("event_id").loc[eid, "event_name"]
+    fig_timeline(eid, tags, tl, episodes(clap_score(tl), params), (best, best + width), name)

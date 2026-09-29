@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Does Applause Move Stocks?</title>
+<style>{% include "report.css" %}</style>
+</head>
+<body>
+{%- set P = results.primary -%}
+{%- set avg = t.average_effects -%}
+
+<h1>Does Applause Move Stocks?</h1>
+<div class="byline">Audience reaction at Big Tech keynotes and short-run abnormal returns ·
+Taehyeon Kim · {{ build_date }}</div>
+
+<div class="abstract">
+<strong class="label">Abstract</strong>
+<p>{{ text.abstract | safe }}</p>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="v">{{ results.n_keynotes }}</div><div class="l">keynotes catalogued, nine companies, 2010–2026</div></div>
+  <div class="kpi"><div class="v">{{ results.n_live_sample }}</div><div class="l">live-audience keynotes in the main sample</div></div>
+  <div class="kpi"><div class="v">{{ "%.2f"|format(validation.test_auc_pooled) }}</div><div class="l">detector ROC-AUC vs human caption tags (held-out videos)</div></div>
+  <div class="kpi"><div class="v">{{ "%+.3f"|format(P.beta) }}</div><div class="l">SCAR[0,+1] per 1 SD more applause (p = {{ fmt_p(P.p_wcb) }})</div></div>
+</div>
+
+<h2>1. Introduction</h2>
+{{ text.intro | safe }}
+
+<h2>2. Data</h2>
+<h3>2.1 The keynote catalogue</h3>
+<p>The sample is every main keynote held by nine large technology companies between January
+2010 and August 2026: Apple (WWDC and product events), Samsung Electronics (Galaxy Unpacked),
+Alphabet (Google I/O, Made by Google and other launches), Microsoft (Build, Ignite and device
+events), Meta (F8 and Connect), Amazon (AWS re:Invent CEO keynotes and device events),
+NVIDIA (GTC, CES and Computex keynotes), Tesla (unveilings, AI days, investor days and
+shareholder meetings) and AMD (CES, Computex and launch events). Each event was researched by
+hand: local start time and time zone (which decide whether the market could react the same
+day), whether an in-person audience was present, and a YouTube video carrying the full
+broadcast audio, preferring the company's own channel. Manual decisions—dropping
+out-of-scope events, rejecting videos with commentary, dubbed audio or audience-camcorder
+sound—are logged in <code>data/catalog/curation_log.md</code>. The catalogue holds
+{{ results.n_keynotes }} keynotes, {{ results.n_with_video }} of them with a usable video.</p>
+
+<figure>
+<img src="{{ fig('coverage_by_year') }}">
+<figcaption><b>Figure 1.</b> Keynotes per year by audience type. The pandemic moved every
+company online in 2020–2022; Apple kept pre-recorded keynotes afterwards, which removes its
+recent events from the live-audience sample.</figcaption>
+</figure>
+
+<h3>2.2 From audio to applause</h3>
+<p>Each video's audio track (the original-language track; machine-dubbed and "stable volume"
+variants are excluded) is decoded to 32 kHz mono and passed through PANNs
+<code>Cnn14_DecisionLevelMax</code> (Kong et al., 2020), a convolutional network trained on
+the 527 classes of Google's AudioSet. The network outputs a probability for every class every
+0.32 seconds; the pipeline keeps thirteen classes (speech, applause, clapping, cheering,
+laughter, music and others) averaged to one row per second, stored as a
+{{ "%.0f"|format(timeline_kb) }} kB file per keynote. The clap score of a second is
+max(P(applause), P(clapping)).</p>
+<p>Two steps turn this timeline into keynote-level measures. First, the <em>keynote span</em>
+keeps the speech-dominated stretch of the video, which removes countdown pre-rolls and
+post-show music, and it is cut where a closing live-music performance begins (Apple
+booked musicians for seven of its keynotes). Second, an <em>ovation</em> is a run of seconds
+whose clap score stays above an offset threshold, reaches an onset threshold at least once
+and lasts at least a minimum duration. The primary measure is <b>applause share</b>, the
+fraction of keynote seconds spent in ovations; secondary measures are ovations per minute,
+the longest ovation, the mean clap probability (threshold-free) and the share of
+cheering.</p>
+
+<figure>
+<img src="{{ fig(timeline_fig) }}">
+<figcaption><b>Figure 2.</b> {{ timeline_caption }}</figcaption>
+</figure>
+
+<h3>2.3 Validating the detector</h3>
+<p>Many official uploads carry captions written by professional captioners, who mark
+audience reactions with tags such as <code>[Applause]</code> or <code>[Cheering and
+applause]</code>. These tags are an independent, human label of when the audience clapped.
+Of the videos with human captions, {{ validation.dev_ids|length }} were used to choose the
+episode thresholds (onset {{ params.on }}, offset {{ params.off }}, minimum
+{{ params.min_dur }} s) by maximising episode-level F1 with a 2-second tolerance, and
+{{ validation.test_ids|length }} were held out. On the held-out videos the detector reaches
+a second-level ROC-AUC of {{ "%.2f"|format(validation.test_auc_pooled) }}, episode precision
+of {{ "%.2f"|format(validation.test_precision) }} and recall of
+{{ "%.2f"|format(validation.test_recall) }}. Caption tags are incomplete—captioners skip short
+or overlapping applause—so measured precision is a lower bound. As a negative control,
+keynotes without an in-person audience should show almost no applause, and they do
+(Figure 3, right).</p>
+
+<figure>
+<img src="{{ fig('detector_validation') }}">
+<figcaption><b>Figure 3.</b> Left: precision, recall and F1 of ovation detection on the
+development videos as the onset threshold varies (vertical line = chosen threshold).
+Right: applause share by audience type; virtual keynotes are the negative control.</figcaption>
+</figure>
+
+<h3>2.4 Market data</h3>
+<p>Daily split- and dividend-adjusted prices and volumes come from Yahoo Finance for the nine
+stocks (Samsung Electronics as 005930.KS on the Korea Exchange), the S&amp;P 500, the
+Nasdaq-100, KOSPI and the VIX; Fama–French daily factors come from Kenneth French's data
+library, and earnings-announcement timestamps from Yahoo Finance. Exchange calendars
+(<code>exchange_calendars</code>) give each session's closing time, including early closes and
+the Korea Exchange's 2016 move from a 15:00 to a 15:30 close.</p>
+
+<h2>3. Method</h2>
+<h3>3.1 Event study</h3>
+<p>The event day <i>t</i><sub>0</sub> is the first trading session whose close is after the
+keynote starts. A keynote at 10:00 Pacific therefore has <i>t</i><sub>0</sub> on the same
+day, while an evening Tesla event, or a Samsung Unpacked in New York (after midnight in
+Seoul), has <i>t</i><sub>0</sub> on the next session. Normal returns come from a market model
+estimated by OLS over sessions [−250, −30] relative to <i>t</i><sub>0</sub> (at least 120
+returns), using the S&amp;P 500 for US listings and KOSPI for Samsung. Abnormal returns are
+cumulated over event windows (CAR) and standardised by the estimation-window residual
+volatility, SCAR = CAR / (σ̂<sub>ε</sub> √L), which puts a Tesla move and a Microsoft move
+on the same scale. Average effects are tested with the cross-sectional t-test, the Boehmer,
+Musumeci and Poulsen (1991) standardised test and Cowan's (1992) generalised sign test.</p>
+
+<h3>3.2 Does applause explain the reaction?</h3>
+<div class="keep"><p>The analysis plan (<code>docs/analysis_plan.md</code>) was committed to git before any
+applause measure was joined to returns. Its primary specification regresses
+SCAR[0,+1] on the within-company z-score of applause share with company fixed effects:</p>
+<p class="eq">SCAR[0,+1]<sub>i</sub> = α<sub>company(i)</sub> + β · z(applause share)<sub>i</sub> + ε<sub>i</sub></p></div>
+<p>Standardising within company compares each keynote with the same company's other
+keynotes, so company style, audience culture and audio mixing cannot drive the result. With
+only nine companies, conventional clustered standard errors are unreliable, so inference
+uses the wild cluster restricted bootstrap (Cameron, Gelbach and Miller, 2008) with Webb's
+six-point weights and 9,999 draws; heteroskedasticity-robust (HC3) intervals are reported
+alongside. Secondary outcomes and secondary applause measures form two families, each
+corrected with the Benjamini–Hochberg procedure.</p>
+
+<h2>4. Results</h2>
+<h3>4.1 Keynotes on average</h3>
+{{ text.avg | safe }}
+
+<div class="tablecap"><b>Table 1.</b> Average abnormal returns around keynotes (market model).</div>
+<table>
+<tr><th>Sample</th><th>Window</th><th class="n">N</th><th class="n">Mean CAR</th><th class="n">95% CI</th><th class="n">p (t)</th><th class="n">p (BMP)</th><th class="n">Positive</th></tr>
+{%- for r in avg.itertuples() if r.window in ['[0,+1]', '[+2,+20]'] %}
+<tr><td>{{ r.sample }}</td><td>{{ r.window }}</td><td class="n">{{ r.n }}</td>
+<td class="n">{{ "%+.2f%%"|format(100*r.mean) }}</td>
+<td class="n">[{{ "%+.2f"|format(100*r.ci_lo) }}, {{ "%+.2f"|format(100*r.ci_hi) }}]</td>
+<td class="n">{{ fmt_p(r.p_t) }}</td><td class="n">{{ fmt_p(r.p_bmp) }}</td>
+<td class="n">{{ "%.0f%%"|format(100*r.pos_share) }}</td></tr>
+{%- endfor %}
+</table>
+
+<figure>
+<img src="{{ fig('caar_paths') }}">
+<figcaption><b>Figure 4.</b> Cumulative average abnormal return from ten sessions before to
+twenty sessions after the keynote, with 95% confidence bands.</figcaption>
+</figure>
+
+<h3>4.2 Applause and the stock's reaction</h3>
+{{ text.primary | safe }}
+
+<figure class="mid">
+<img src="{{ fig('primary_scatter') }}">
+<figcaption><b>Figure 5.</b> Within-company applause share against SCAR[0,+1] (both
+demeaned within company, so the line's slope is the fixed-effects estimate). Shaded band:
+95% HC3 interval of the slope.</figcaption>
+</figure>
+
+<div class="tablecap"><b>Table 2.</b> Pre-registered secondary analyses (company fixed effects;
+q = Benjamini–Hochberg adjusted within each family).</div>
+<table>
+<tr><th>Family</th><th>Outcome / measure</th><th class="n">β</th><th class="n">95% CI (HC3)</th><th class="n">p (WCB)</th><th class="n">q</th><th class="n">N</th></tr>
+<tr class="primary"><td>Primary</td><td>SCAR[0,+1] ~ applause share</td><td class="n">{{ "%+.3f"|format(P.beta) }}</td>
+<td class="n">[{{ "%+.3f"|format(P.ci_lo) }}, {{ "%+.3f"|format(P.ci_hi) }}]</td><td class="n">{{ fmt_p(P.p_wcb) }}</td><td class="n">–</td><td class="n">{{ P.n }}</td></tr>
+{%- for r in t.secondary_outcomes.itertuples() %}
+<tr><td>Outcome</td><td>{{ r.outcome }}</td><td class="n">{{ "%+.3f"|format(r.beta) }}</td>
+<td class="n">[{{ "%+.3f"|format(r.ci_lo) }}, {{ "%+.3f"|format(r.ci_hi) }}]</td><td class="n">{{ fmt_p(r.p_wcb) }}</td><td class="n">{{ "%.2f"|format(r.q_bh) }}</td><td class="n">{{ r.n }}</td></tr>
+{%- endfor %}
+{%- for r in t.secondary_measures.itertuples() %}
+<tr><td>Measure</td><td>{{ r.measure }}</td><td class="n">{{ "%+.3f"|format(r.beta) }}</td>
+<td class="n">[{{ "%+.3f"|format(r.ci_lo) }}, {{ "%+.3f"|format(r.ci_hi) }}]</td><td class="n">{{ fmt_p(r.p_wcb) }}</td><td class="n">{{ "%.2f"|format(r.q_bh) }}</td><td class="n">{{ r.n }}</td></tr>
+{%- endfor %}
+</table>
+<div class="note">SCAR outcomes are in units of estimation-window residual standard deviations
+per one within-company standard deviation of applause share. WCB = wild cluster restricted
+bootstrap over companies.</div>
+
+<h3>4.3 Sorting, robustness and placebo</h3>
+{{ text.robust | safe }}
+
+<div class="figrow">
+<figure>
+<img src="{{ fig('terciles') }}">
+<figcaption><b>Figure 6.</b> Mean SCAR[0,+1] by within-company applause tercile, with 95%
+intervals.</figcaption>
+</figure>
+<figure>
+<img src="{{ fig('placebo') }}">
+<figcaption><b>Figure 8.</b> The coefficient when each keynote's applause is paired with the
+stock's reaction on a random non-event day of the same company.</figcaption>
+</figure>
+</div>
+
+<figure>
+<img src="{{ fig('robustness') }}">
+<figcaption><b>Figure 7.</b> The applause coefficient across normal-return models, controls,
+subsamples and alternative applause measures (95% HC3 intervals). Rows marked exploratory
+were added after the plan was registered.</figcaption>
+</figure>
+
+
+
+<figure>
+<img src="{{ fig('company_multiples') }}">
+<figcaption><b>Figure 9.</b> Raw applause share against SCAR[0,+1], company by company.</figcaption>
+</figure>
+
+<h3>4.4 Live versus virtual keynotes</h3>
+{{ text.lvv | safe }}
+<div class="tablecap"><b>Table 3.</b> Live-audience versus virtual keynotes (descriptive).</div>
+<table>
+<tr><th>Outcome</th><th class="n">Live</th><th class="n">Virtual</th><th class="n">Difference</th><th class="n">p (Welch)</th><th class="n">N live / virtual</th></tr>
+{%- for r in t.live_vs_virtual.itertuples() %}
+<tr><td>{{ r.outcome }}</td><td class="n">{{ "%+.3f"|format(r.live_mean) }}</td><td class="n">{{ "%+.3f"|format(r.virtual_mean) }}</td>
+<td class="n">{{ "%+.3f"|format(r.diff) }}</td><td class="n">{{ fmt_p(r.p_welch) }}</td><td class="n">{{ r.n_live }} / {{ r.n_virtual }}</td></tr>
+{%- endfor %}
+</table>
+
+<h2>5. Discussion and limitations</h2>
+{{ text.discussion | safe }}
+
+<h2>6. Conclusion</h2>
+{{ text.conclusion | safe }}
+
+<h2>References</h2>
+<p style="font-size:8.6pt">Boehmer, E., Musumeci, J. and Poulsen, A. (1991). Event-study
+methodology under conditions of event-induced variance. <i>Journal of Financial Economics</i>
+30(2). · Cameron, A. C., Gelbach, J. and Miller, D. (2008). Bootstrap-based improvements for
+inference with clustered errors. <i>Review of Economics and Statistics</i> 90(3). · Cowan, A.
+(1992). Nonparametric event study tests. <i>Review of Quantitative Finance and Accounting</i>
+2. · Kong, Q. et al. (2020). PANNs: Large-scale pretrained audio neural networks for audio
+pattern recognition. <i>IEEE/ACM TASLP</i> 28. · MacKinlay, A. C. (1997). Event studies in
+economics and finance. <i>Journal of Economic Literature</i> 35(1). · Webb, M. (2023).
+Reworking wild bootstrap-based inference for clustered errors. <i>Canadian Journal of
+Economics</i> 56(3).</p>
+
+<div class="pagebreak appendix">
+<h2>Appendix A. Live-audience keynotes in the main sample</h2>
+<table>
+<tr><th>Date</th><th>Company</th><th>Keynote</th><th class="n">Applause share</th><th class="n">z</th><th class="n">CAR[0,+1]</th><th class="n">SCAR[0,+1]</th></tr>
+{%- for r in t.analysis_sample.sort_values('start_utc').itertuples() %}
+<tr><td>{{ r.date_local }}</td><td>{{ companies[r.company] }}</td><td>{{ r.event_name[:44] }}</td>
+<td class="n">{{ "%.1f%%"|format(100*r.applause_share) }}</td><td class="n">{{ "%+.2f"|format(r.z_applause_share) }}</td>
+<td class="n">{{ "%+.2f%%"|format(100*r.car_0_1_market) }}</td><td class="n">{{ "%+.2f"|format(r.scar_0_1_market) }}</td></tr>
+{%- endfor %}
+</table>
+
+<h2>Appendix B. Reproducing the results</h2>
+<p>The repository runs end to end with <code>make all</code>: catalogue validation, audio
+download (cached, never committed), detection, caption download and detector validation,
+applause features, market data, the event study, the pre-registered analysis, figures,
+notebooks and this report. Derived per-second timelines are committed, so every number in
+this report can be recomputed from <code>make features study analyze figures report</code>
+without downloading any audio.</p>
+</div>
+</body>
+</html>

@@ -43,6 +43,29 @@ def download_prices(tickers: list[str] | None = None, start: str = PRICE_START,
         print(f"prices: {t:10s} {df.index.min():%Y-%m-%d} .. {df.index.max():%Y-%m-%d} ({len(df)} days)")
 
 
+EARNINGS_FILE = PRICES_DIR / "earnings_dates.parquet"
+
+
+def download_earnings(limit: int = 100) -> None:
+    """Historical earnings-announcement timestamps (Yahoo Finance) for every company."""
+    frames = []
+    for c in COMPANIES.values():
+        df = yf.Ticker(c.ticker).get_earnings_dates(limit=limit)
+        ts = pd.to_datetime(df.index)
+        ts = ts.tz_localize("America/New_York") if ts.tz is None else ts
+        frames.append(pd.DataFrame({"ticker": c.ticker, "announced_utc": ts.tz_convert("UTC")}))
+    out = pd.concat(frames, ignore_index=True).drop_duplicates()
+    out.to_parquet(EARNINGS_FILE, index=False)
+    print(f"earnings: {len(out)} announcements for {out.ticker.nunique()} tickers")
+
+
+def load_earnings(ticker: str) -> pd.Series:
+    if not EARNINGS_FILE.exists():
+        return pd.Series(dtype="datetime64[ns, UTC]")
+    df = pd.read_parquet(EARNINGS_FILE)
+    return df.loc[df.ticker == ticker, "announced_utc"].sort_values().reset_index(drop=True)
+
+
 def load_prices(ticker: str) -> pd.DataFrame:
     return pd.read_parquet(price_file(ticker))
 
@@ -98,6 +121,9 @@ def stock_panel(company: Company, benchmark: str | None = None) -> pd.DataFrame:
     """Daily frame on the stock's own trading days: ret, mkt, log volume, close time, factors."""
     stock = load_prices(company.ticker)
     mkt = load_prices(benchmark or company.market)
+    # Yahoo lists some exchange holidays (e.g. Korea's 2015-08-14 temporary holiday) as
+    # zero-volume rows; a day with no volume and no index print is not a trading day.
+    stock = stock[~((stock["volume"] == 0) & ~stock.index.isin(mkt.index))]
     df = pd.DataFrame(index=stock.index)
     df["ret"] = stock["close"].pct_change()
     # Zero-volume days are trading halts (e.g. Samsung's 50:1 split in May 2018) whose flat

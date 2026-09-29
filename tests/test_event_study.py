@@ -2,7 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from unpacked_applause.event_study import abnormal_returns, abnormal_volume, car, locate_t0
+from unpacked_applause.event_study import (
+    abnormal_returns,
+    abnormal_volume,
+    car,
+    earnings_near,
+    locate_t0,
+)
 
 
 def synthetic_panel(n=400, beta=1.2, alpha=0.0005, shock_at=300, shocks=(0.03, 0.01), seed=1):
@@ -60,3 +66,12 @@ def test_abnormal_volume_detects_spike():
     panel.loc[panel.index[300], "logvol"] = np.log1p(3e6)
     raw, _ = abnormal_volume(panel, 300)
     assert raw == pytest.approx((np.log1p(3e6) - np.log1p(1e6)) / 2, rel=1e-6)
+
+
+def test_earnings_near_uses_first_tradable_session():
+    panel = synthetic_panel()
+    t0 = 300
+    after_close_day_before = panel["close_utc"].iloc[t0 - 2] + pd.Timedelta(hours=1)
+    far = panel["close_utc"].iloc[t0 - 10]
+    assert earnings_near(panel, t0, pd.Series([after_close_day_before]))  # trades at t0-1
+    assert not earnings_near(panel, t0, pd.Series([far]))

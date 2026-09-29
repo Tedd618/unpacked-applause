@@ -21,7 +21,7 @@ from .config import (
     MIN_ESTIMATION_OBS,
     PATH_WINDOW,
 )
-from .market import stock_panel
+from .market import load_earnings, stock_panel
 
 MODELS = ("market", "market_ndx", "market_adj", "mean", "ff3")
 
@@ -124,10 +124,21 @@ def abnormal_volume(panel: pd.DataFrame, pos: int, window=(0, 1),
     return float(dev), float(dev / sd) if sd > 0 else np.nan
 
 
+def earnings_near(panel: pd.DataFrame, pos: int, announced_utc: pd.Series,
+                  window: int = 1) -> bool:
+    """True if an earnings release first trades within +-``window`` sessions of t0."""
+    for ts in announced_utc:
+        epos = locate_t0(panel["close_utc"], ts)
+        if epos is not None and abs(epos - pos) <= window:
+            return True
+    return False
+
+
 def run_event_study(events: pd.DataFrame, models=MODELS) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Returns (event-level table, long table of daily ARs for the primary market model)."""
     panels = {slug: stock_panel(c) for slug, c in COMPANIES.items()
               if slug in set(events["company"])}
+    earnings = {slug: load_earnings(COMPANIES[slug].ticker) for slug in panels}
     rows, paths = [], []
     for ev in events.itertuples():
         panel = panels[ev.company]
@@ -152,6 +163,7 @@ def run_event_study(events: pd.DataFrame, models=MODELS) -> tuple[pd.DataFrame, 
                 paths.append(pd.DataFrame({"event_id": ev.event_id, "rel_day": res["ar"].index,
                                            "ar": res["ar"].to_numpy(),
                                            "sar": res["ar"].to_numpy() / res["sigma"]}))
+        row["earnings_near"] = earnings_near(panel, pos, earnings[ev.company])
         row["abn_logvol_0_1"], row["sav_0_1"] = abnormal_volume(panel, pos)
         row["ret_0_1_raw"] = float(np.prod(1 + panel["ret"].iloc[pos : pos + 2]) - 1)
         row["mkt_0_1_raw"] = float(np.prod(1 + panel["mkt"].iloc[pos : pos + 2]) - 1)

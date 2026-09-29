@@ -101,10 +101,11 @@ def cmd_features(args) -> None:
 
 
 def cmd_market(args) -> None:
-    from .market import download_ff_factors, download_prices
+    from .market import download_earnings, download_ff_factors, download_prices
 
     download_prices()
     download_ff_factors()
+    download_earnings()
 
 
 def cmd_study(args) -> None:
